@@ -111,7 +111,8 @@ void checkAndConnectWifi(){
     Serial.println("Connected");
     digitalWrite(LED_BUILTIN, LOW);
     printIP();
-    last_state = getLastState(GUID);
+    bool last_state = getLastState(GUID);
+    checkGuid(GUID, last_state);
 
   }
 }
@@ -178,7 +179,7 @@ bool getLastState(String guid){
   WiFiClient wifi;
   HttpClient httpClient = HttpClient(wifi, UPDATE_SERVER, SERVER_PORT);
   httpClient.get("/smarthome/device/"+guid);
-  String response = client.responseBody();
+  String response = httpClient.responseBody();
   return response == "true";
 }
 
