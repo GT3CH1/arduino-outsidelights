@@ -111,7 +111,7 @@ void checkAndConnectWifi(){
     Serial.println("Connected");
     digitalWrite(LED_BUILTIN, LOW);
     printIP();
-    sendUpdate("6eaeba5c-9e24-4e85-a21e-afcadc2c967a",false);
+    last_state = getLastState(GUID);
 
   }
 }
@@ -151,7 +151,7 @@ void updateReceived(){
 }
 
 void checkGuid(String guid, bool state){
-  if (guid == "6eaeba5c-9e24-4e85-a21e-afcadc2c967a"){
+  if (guid == GUID){
     pinMode(LIGHT_PIN,OUTPUT);
     digitalWrite(LIGHT_PIN, state ? LOW : HIGH);
   }
@@ -172,6 +172,14 @@ void sendUpdate(String guid, bool state){
   Serial.println(statusCode);
   httpClient.flush();
   httpClient.stop();
+}
+
+bool getLastState(String guid){
+  WiFiClient wifi;
+  HttpClient httpClient = HttpClient(wifi, UPDATE_SERVER, SERVER_PORT);
+  httpClient.get("/smarthome/device/"+guid);
+  String response = client.responseBody();
+  return response == "true";
 }
 
 String IpAddress2String(const IPAddress& ipAddress)
