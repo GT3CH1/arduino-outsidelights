@@ -9,6 +9,7 @@
 int status = WL_IDLE_STATUS;
 aREST rest = aREST();
 WiFiServer server(80);
+
 int LIGHT_PIN = 2;
 bool output;
 
@@ -74,7 +75,7 @@ void handleSketchDownload() {
     Serial.println(" bytes. Can't continue with update.");
     return;
   }
-
+  updateReceived();
   Serial.println("Sketch update apply and reset.");
   Serial.flush();
   InternalStorage.apply(); // this doesn't return
@@ -100,7 +101,7 @@ void checkAndConnectWifi(){
   status = WiFi.status();
   if(status != WL_CONNECTED){
     digitalWrite(LED_BUILTIN, HIGH);
-    Serial.print("WiFi disconnected, connecting to wifi.");z
+    Serial.print("WiFi disconnected, connecting to wifi.");
     while(status != WL_CONNECTED){
       status = WiFi.begin(WIFI_SSID,WIFI_PASSWORD);
       Serial.print(".");
@@ -110,7 +111,8 @@ void checkAndConnectWifi(){
     Serial.println("Connected");
     digitalWrite(LED_BUILTIN, LOW);
     printIP();
-    blinkLights();
+    sendUpdate("6eaeba5c-9e24-4e85-a21e-afcadc2c967a",false);
+
   }
 }
 
@@ -137,13 +139,13 @@ int setOff(String guid){
     return 1;
 }
 
-void blinkLights(){
+void updateReceived(){
   for(int i = 0; i < 4; i++){
     digitalWrite(LED_BUILTIN, HIGH);
-
+    digitalWrite(LIGHT_PIN,LOW);
     delay(100);
     digitalWrite(LED_BUILTIN, LOW);
-
+    digitalWrite(LIGHT_PIN,HIGH);
     delay(100);
   }
 }
@@ -153,4 +155,27 @@ void checkGuid(String guid, bool state){
     pinMode(LIGHT_PIN,OUTPUT);
     digitalWrite(LIGHT_PIN, state ? LOW : HIGH);
   }
+  sendUpdate(guid,state);
+}
+
+void sendUpdate(String guid, bool state){
+  WiFiClient wifi;
+  HttpClient httpClient = HttpClient(wifi, UPDATE_SERVER, SERVER_PORT);
+
+  String contentType = "application/x-www-form-urlencoded";
+  String data = "guid=" + guid + "&ip=" + IpAddress2String(WiFi.localIP()) + "&state=" + state + "&sw_version=" + String(VERSION);
+  Serial.println(data);
+  httpClient.put("/smarthome/device",contentType,data);
+  int statusCode = httpClient.responseStatusCode();
+
+  Serial.print("Update status code: ");
+  Serial.println(statusCode);
+}
+
+String IpAddress2String(const IPAddress& ipAddress)
+{
+  return String(ipAddress[0]) + String(".") +\
+  String(ipAddress[1]) + String(".") +\
+  String(ipAddress[2]) + String(".") +\
+  String(ipAddress[3])  ; 
 }
