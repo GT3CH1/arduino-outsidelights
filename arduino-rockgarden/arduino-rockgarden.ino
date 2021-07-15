@@ -170,6 +170,8 @@ void sendUpdate(String guid, bool state){
 
   Serial.print("Update status code: ");
   Serial.println(statusCode);
+  httpClient.flush();
+  httpClient.stop();
 }
 
 String IpAddress2String(const IPAddress& ipAddress)
