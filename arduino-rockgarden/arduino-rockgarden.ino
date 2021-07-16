@@ -166,7 +166,7 @@ void sendUpdate(String guid, bool state){
   String contentType = "application/x-www-form-urlencoded";
   String data = "guid=" + guid + "&ip=" + IpAddress2String(WiFi.localIP()) + "&state=" + state + "&sw_version=" + String(VERSION);
   Serial.println(data);
-  httpClient.put("/smarthome/device",contentType,data);
+  httpClient.put("/smarthome/update",contentType,data);
   int statusCode = httpClient.responseStatusCode();
 
   Serial.print("Update status code: ");
