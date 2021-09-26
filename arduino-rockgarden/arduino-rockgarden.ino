@@ -1,6 +1,6 @@
 #include <ArduinoOTA.h> 
 #include <ArduinoHttpClient.h>
-
+#include <ArduinoJson.h>
 #include "secret.h"
 #include <SPI.h>
 #include <WiFiNINA.h>
@@ -12,6 +12,7 @@ WiFiServer server(80);
 
 int LIGHT_PIN = 2;
 bool output;
+StaticJsonDocument<512> doc;
 
 void handleSketchDownload() {
 
@@ -75,12 +76,10 @@ void handleSketchDownload() {
     Serial.println(" bytes. Can't continue with update.");
     return;
   }
-  updateReceived();
   Serial.println("Sketch update apply and reset.");
   Serial.flush();
   InternalStorage.apply(); // this doesn't return
 }
-
 
 void setup() {
   Serial.begin(9600);
@@ -103,29 +102,29 @@ void checkAndConnectWifi(){
     digitalWrite(LED_BUILTIN, HIGH);
     Serial.print("WiFi disconnected, connecting to wifi.");
     while(status != WL_CONNECTED){
-      status = WiFi.begin(WIFI_SSID,WIFI_PASSWORD);
-      Serial.print(".");
-      delay(3000);
+        status = WiFi.begin(WIFI_SSID,WIFI_PASSWORD);
+        Serial.print(".");
+        delay(100);
     }
     Serial.println("");
     Serial.println("Connected");
+    delay(3000);
     digitalWrite(LED_BUILTIN, LOW);
     printIP();
-    sendUpdate("6eaeba5c-9e24-4e85-a21e-afcadc2c967a",false);
-
+    bool last_state = getLastState(LIGHT_GUID);
+    checkGuid(LIGHT_GUID, last_state);
   }
 }
 
 void printIP(){
-    IPAddress ip = WiFi.localIP();
     Serial.println("IP Address: ");
-    Serial.println(ip);
+    Serial.println(getIP());
 }
   
 void loop() {
+  checkAndConnectWifi();
   WiFiClient client = server.available();
   rest.handle(client);
-  checkAndConnectWifi();
   handleSketchDownload();
 }
 
@@ -139,19 +138,8 @@ int setOff(String guid){
     return 1;
 }
 
-void updateReceived(){
-  for(int i = 0; i < 4; i++){
-    digitalWrite(LED_BUILTIN, HIGH);
-    digitalWrite(LIGHT_PIN,LOW);
-    delay(100);
-    digitalWrite(LED_BUILTIN, LOW);
-    digitalWrite(LIGHT_PIN,HIGH);
-    delay(100);
-  }
-}
-
 void checkGuid(String guid, bool state){
-  if (guid == "6eaeba5c-9e24-4e85-a21e-afcadc2c967a"){
+  if (guid == LIGHT_GUID){
     pinMode(LIGHT_PIN,OUTPUT);
     digitalWrite(LIGHT_PIN, state ? LOW : HIGH);
   }
@@ -159,25 +147,44 @@ void checkGuid(String guid, bool state){
 }
 
 void sendUpdate(String guid, bool state){
-  WiFiClient wifi;
-  HttpClient httpClient = HttpClient(wifi, UPDATE_SERVER, SERVER_PORT);
-
-  String contentType = "application/x-www-form-urlencoded";
-  String data = "guid=" + guid + "&ip=" + IpAddress2String(WiFi.localIP()) + "&state=" + state + "&sw_version=" + String(VERSION);
-  Serial.println(data);
-  httpClient.put("/smarthome/device",contentType,data);
-  int statusCode = httpClient.responseStatusCode();
-
-  Serial.print("Update status code: ");
-  Serial.println(statusCode);
-  httpClient.flush();
-  httpClient.stop();
+    WiFiClient wifi;
+    HttpClient httpClient = HttpClient(wifi, UPDATE_SERVER, SERVER_PORT);
+    String contentType = "application/x-www-form-urlencoded";
+    String data = "guid=" + guid + "&ip=" + getIP() + "&state=" + (state ? "true" : "false") + "&sw_version=" + String(VERSION);
+    httpClient.sendHeader("x-api-key", API_KEY);
+    httpClient.sendHeader("x-auth-id", API_ID);
+    httpClient.sendHeader(HTTP_HEADER_CONTENT_LENGTH, data.length());
+    Serial.println(data);
+    httpClient.put("/smarthome/update",contentType,data);
+    int statusCode = httpClient.responseStatusCode(); 
+    httpClient.stop();
 }
 
-String IpAddress2String(const IPAddress& ipAddress)
+bool getLastState(String guid){
+    WiFiClient wifi;
+    Serial.println("Getting last state for " + guid);
+    HttpClient httpClient = HttpClient(wifi, UPDATE_SERVER, SERVER_PORT);
+    httpClient.beginRequest();
+    httpClient.get("/smarthome/device/"+guid);
+    httpClient.sendHeader("x-api-key", API_KEY);
+    httpClient.sendHeader("x-auth-id", API_ID);
+    httpClient.endRequest();
+    String responeBody = httpClient.responseBody();
+    DeserializationError error = deserializeJson(doc, responeBody.c_str(), 512);
+    if (error) {
+      Serial.print(F("deserializeJson() failed: "));
+      Serial.println(error.f_str());
+      return false;
+    }
+    Serial.println(responeBody);
+    return doc["last_state"];
+}
+
+String getIP()
 {
-  return String(ipAddress[0]) + String(".") +\
-  String(ipAddress[1]) + String(".") +\
-  String(ipAddress[2]) + String(".") +\
-  String(ipAddress[3])  ; 
+  const IPAddress& ipAddress = WiFi.localIP();
+    return String(ipAddress[0]) + String(".") +\
+        String(ipAddress[1]) + String(".") +\
+        String(ipAddress[2]) + String(".") +\
+        String(ipAddress[3])  ;
 }
