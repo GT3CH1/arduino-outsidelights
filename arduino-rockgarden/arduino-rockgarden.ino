@@ -5,6 +5,7 @@
 #include <SPI.h>
 #include <WiFiNINA.h>
 #include <aREST.h>
+#include <ArduinoJson.h>
 
 int status = WL_IDLE_STATUS;
 aREST rest = aREST();
@@ -12,6 +13,7 @@ WiFiServer server(80);
 
 int LIGHT_PIN = 2;
 bool output;
+StaticJsonDocument<512> doc;
 
 void handleSketchDownload() {
 
@@ -113,14 +115,12 @@ void checkAndConnectWifi(){
     printIP();
     bool last_state = getLastState(GUID);
     checkGuid(GUID, last_state);
-
   }
 }
 
 void printIP(){
-    IPAddress ip = WiFi.localIP();
-    Serial.println("IP Address: ");
-    Serial.println(ip);
+   Serial.println("IP Address: ");
+   Serial.println(getIP());
 }
   
 void loop() {
@@ -164,29 +164,42 @@ void sendUpdate(String guid, bool state){
   HttpClient httpClient = HttpClient(wifi, UPDATE_SERVER, SERVER_PORT);
 
   String contentType = "application/x-www-form-urlencoded";
-  String data = "guid=" + guid + "&ip=" + IpAddress2String(WiFi.localIP()) + "&state=" + state + "&sw_version=" + String(VERSION);
+  String state_str = state ? "true" : "false";
+  String data = "guid=" + guid + "&ip=" + getIP() + "&state=" + state_str + "&sw_version=" + String(VERSION);
+  httpClient.sendHeader("x-api-key", API_KEY);
+  httpClient.sendHeader("x-auth-id", API_ID);
+  httpClient.sendHeader(HTTP_HEADER_CONTENT_LENGTH, data.length());
   Serial.println(data);
   httpClient.put("/smarthome/update",contentType,data);
-  int statusCode = httpClient.responseStatusCode();
-
-  Serial.print("Update status code: ");
-  Serial.println(statusCode);
-  httpClient.flush();
+  int statusCode = httpClient.responseStatusCode(); 
   httpClient.stop();
 }
 
 bool getLastState(String guid){
-  WiFiClient wifi;
-  HttpClient httpClient = HttpClient(wifi, UPDATE_SERVER, SERVER_PORT);
-  httpClient.get("/smarthome/device/"+guid);
-  String response = httpClient.responseBody();
-  return response == "true";
+    WiFiClient wifi;
+    Serial.println("Getting last state for " + guid);
+    HttpClient httpClient = HttpClient(wifi, UPDATE_SERVER, SERVER_PORT);
+    httpClient.beginRequest();
+    httpClient.get("/smarthome/device/"+guid);
+    httpClient.sendHeader("x-api-key", API_KEY);
+    httpClient.sendHeader("x-auth-id", API_ID);
+    httpClient.endRequest();
+    String responeBody = httpClient.responseBody();
+    DeserializationError error = deserializeJson(doc, responeBody.c_str(), 512);
+    if (error) {
+      Serial.print(F("deserializeJson() failed: "));
+      Serial.println(error.f_str());
+      return false;
+    }
+    Serial.println(responeBody);
+    return doc["last_state"];
 }
 
-String IpAddress2String(const IPAddress& ipAddress)
+String getIP()
 {
-  return String(ipAddress[0]) + String(".") +\
-  String(ipAddress[1]) + String(".") +\
-  String(ipAddress[2]) + String(".") +\
-  String(ipAddress[3])  ; 
+  const IPAddress& ipAddress = WiFi.localIP();
+    return String(ipAddress[0]) + String(".") +\
+        String(ipAddress[1]) + String(".") +\
+        String(ipAddress[2]) + String(".") +\
+        String(ipAddress[3])  ;
 }
